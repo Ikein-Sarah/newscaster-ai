@@ -9,6 +9,7 @@ class Article(BaseModel):
     source: str
     published_at: datetime
     description: str = ""
+    category: str = ""
 
 class RSSScraper:
     def __init__(self, feeds: dict[str,str]):
@@ -22,6 +23,9 @@ class RSSScraper:
 
         for source, url in self.feeds.items():
             feed = feedparser.parse(url)
+
+            if feed.bozo and not feed.entries:
+                print(f"Warning: could not cleanly parse feed for '{source}' ({url})")
 
             for entry in feed.entries:
                 published_parsed =  getattr(entry, "published_parsed", None)
@@ -37,29 +41,37 @@ class RSSScraper:
                     continue
                 seen_urls.add(link)
 
+                category = entry.get("tags", [{}])[0].get("term", "") if entry.get("tags") else ""
+
                 articles.append(Article(
                     title = entry.get("title", ""),
                     url = link,
                     source = source,
                     published_at = published_at,
-                    description = entry.get("summary", "")
+                    description = entry.get("summary", ""),
+                    category = category
                 ))
 
+        articles.sort(key=lambda a: a.published_at, reverse=True)
         return articles
 
 
 
-if __name__ == "__main__":
-    FEEDS = {
-        "Simon Willison": "https://simonwillison.net/atom/everything/",
-        "Anthropic Engineering": "https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_engineering.xml",
-        "Hugging Face": "https://huggingface.co/blog/feed.xml",
-        "OpenAI": "https://openai.com/news/rss.xml",
-        "Hacker News": "https://hnrss.org/frontpage?points=100",
-    }
+FEEDS = {
+    "Simon Willison": "https://simonwillison.net/atom/everything/",
+    "Anthropic News": "https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml",
+    "Hugging Face": "https://huggingface.co/blog/feed.xml",
+    "OpenAI": "https://openai.com/news/rss.xml",
+    "Ahead of AI (Sebastian Raschka)": "https://magazine.sebastianraschka.com/feed",
+    "Google DeepMind": "https://deepmind.google/blog/feed/basic/",
+    "KDnuggets": "https://www.kdnuggets.com/feed",
+    "Towards Data Science": "https://towardsdatascience.com/feed",
+}
 
+
+if __name__ == "__main__":
     scraper = RSSScraper(FEEDS)
-    articles = scraper.get_articles(hours=72)
+    articles = scraper.get_articles(hours=1000)
 
     print(f"Found {len(articles)} articles\n")
     for a in articles:
