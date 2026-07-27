@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 dependencies = [
     "dotenv>=0.9.9",
     "feedparser>=6.0.12",
+    "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
+    "sqlalchemy>=2.0.51",
     "youtube-transcript-api[default]>=1.2.4",
 ]

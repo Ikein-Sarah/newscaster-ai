@@ -71,7 +71,7 @@ FEEDS = {
 
 if __name__ == "__main__":
     scraper = RSSScraper(FEEDS)
-    articles = scraper.get_articles(hours=1000)
+    articles = scraper.get_articles(hours=24)
 
     print(f"Found {len(articles)} articles\n")
     for a in articles:
