@@ -10,5 +10,6 @@ dependencies = [
     "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
     "sqlalchemy>=2.0.51",
+    "trafilatura>=2.1.0",
     "youtube-transcript-api[default]>=1.2.4",
 ]
