@@ -21,7 +21,13 @@ class ArticleRow(Base):
     description: Mapped[str] = mapped_column(Text, default= "")
     content: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="fetched")
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    summary: Mapped[str] = mapped_column(Text, server_default="")
+    key_insight: Mapped[str] = mapped_column(Text, server_default="")
+    angle: Mapped[str] = mapped_column(Text, server_default="")
+    story_type: Mapped[str] = mapped_column(String(50), server_default="")
+    specific_detail: Mapped[str] = mapped_column(Text, server_default="")
+    
 
     __table_args__ = (UniqueConstraint("url", name="uq_articles_url"),)
 

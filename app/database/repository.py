@@ -37,4 +37,14 @@ def update_content(article_id: int, content: str):
             article.status = "content_fetched"
             session.commit()
 
-
+def save_analysis(article_id: int, analysis: dict):
+    with SessionLocal() as session:
+        article = session.query(ArticleRow).filter(ArticleRow.id == article_id).first()
+        if article:
+            article.story_type = analysis.get("story_type", "")
+            article.specific_detail = analysis.get("specific_detail", "")
+            article.angle = analysis.get("angle", "")
+            article.key_insight = analysis.get("key_insight", "")
+            article.summary = analysis.get("summary", "")
+            article.status = "analyzed"
+            session.commit()
