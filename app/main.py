@@ -7,7 +7,8 @@ from app.database.repository import (
     update_content,
     save_analysis,
 )
-
+from app.services.emailer import send_email
+from app.database.repository import get_analyzed_articles, mark_emailed
 
 
 def run():
@@ -32,6 +33,15 @@ def run():
         if result:
             save_analysis(article.id, result)
             print(f"  {result.get('story_type'):12} {article.title[:50]}")
+    
+
+    to_send = get_analyzed_articles(hours=24)
+    if to_send:
+        send_email(to_send)
+        mark_emailed([a.id for a in to_send])
+        print(f"Emailed {len(to_send)} articles")
+    else:
+        print("Nothing to email")
 
 
 if __name__ == "__main__":

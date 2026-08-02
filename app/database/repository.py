@@ -1,6 +1,7 @@
 from sqlalchemy.dialects.postgresql import insert
 from app.database.database import SessionLocal
 from app.database.models import ArticleRow
+from datetime import datetime, timedelta, timezone
 
 def save_articles(articles) -> int:
     saved = 0
@@ -38,13 +39,40 @@ def update_content(article_id: int, content: str):
             session.commit()
 
 def save_analysis(article_id: int, analysis: dict):
+    required = ["story_type", "specific_detail", "angle", "key_insight", "summary"]
+    missing = [f for f in required if not analysis.get(f)]
+    if missing:
+        print(f"  incomplete analysis for {article_id}, missing: {missing}")
+        return
+
     with SessionLocal() as session:
         article = session.query(ArticleRow).filter(ArticleRow.id == article_id).first()
-        if article:
-            article.story_type = analysis.get("story_type", "")
-            article.specific_detail = analysis.get("specific_detail", "")
-            article.angle = analysis.get("angle", "")
-            article.key_insight = analysis.get("key_insight", "")
-            article.summary = analysis.get("summary", "")
-            article.status = "analyzed"
-            session.commit()
+        if not article:
+            print(f"  no article with id {article_id}")
+            return
+
+        article.story_type = analysis["story_type"]
+        article.specific_detail = analysis["specific_detail"]
+        article.angle = analysis["angle"]
+        article.key_insight = analysis["key_insight"]
+        article.summary = analysis["summary"]
+        article.status = "analyzed"
+        session.commit()
+
+
+def get_analyzed_articles(hours: int = 24):
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    with SessionLocal() as session:
+        return (
+            session.query(ArticleRow)
+            .filter(ArticleRow.status == "analyzed", ArticleRow.fetched_at >= cutoff)
+            .all()
+        )
+
+
+def mark_emailed(article_ids: list[int]):
+    with SessionLocal() as session:
+        session.query(ArticleRow).filter(ArticleRow.id.in_(article_ids)).update(
+            {ArticleRow.status: "emailed"}, synchronize_session=False
+        )
+        session.commit()
