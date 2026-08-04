@@ -1,84 +1,113 @@
-# AI News Aggregator
+# Newscaster
 
-A personal pipeline that scrapes AI news from multiple sources, stores it in Postgres,
-summarizes it with an AI agent, and emails a daily digest.
+A daily pipeline that scrapes AI/ML blogs, has an LLM read each article like an editor,
+and emails a digest grouped by story type — with a suggested "angle" for each piece worth
+building or writing about.
+
+Unlike a plain link digest, the analysis step doesn't just summarize — it asks "is there
+something a person could build or test from this in a day?" and only surfaces an angle
+when the answer is yes.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Sources
-        A1[OpenAI Blog RSS]
-        A2[Anthropic Blog RSS]
-        A3[YouTube Channel]
-    end
+    A[RSSScraper<br/>app/scrapers/blogs.py<br/>9 blog feeds] --> B[(Postgres<br/>articles table)]
 
-    subgraph app/services
-        B1[openai.py]
-        B2[anthropic.py]
-        B3[youtube.py]
-    end
+    B -->|status: fetched| C[extract_content<br/>app/scrapers/extractor.py<br/>trafilatura]
+    C -->|status: content_fetched| B
 
-    A1 --> B1
-    A2 --> B2
-    A3 --> B3
+    B -->|status: content_fetched| D[analyze_article<br/>app/services/analyzer.py<br/>OpenAI gpt-4o]
+    D -->|status: analyzed| B
 
-    B1 --> C[(PostgreSQL)]
-    B2 --> C
-    B3 --> C
+    B -->|status: analyzed, last 24h| E[send_email<br/>app/services/emailer.py<br/>Gmail SMTP]
+    E -->|status: emailed| B
+    E --> F[Your inbox]
 
-    C --> D[digest_agent.py<br/>AI summarizes each article]
-    D --> C
+    G[app/main.py] -.orchestrates.-> A
+    G -.-> C
+    G -.-> D
+    G -.-> E
 
-    C --> E[email_builder.py<br/>collect last 24h digests]
-    E --> F[email_sender.py<br/>send via SMTP]
-    F --> G[Your Inbox]
-
-    H[scheduler / main.py] --> B1
-    H --> B2
-    H --> B3
-    H --> D
-    H --> E
+    H[GitHub Actions<br/>.github/workflows/daily.yml<br/>cron 06:00 UTC] -.triggers.-> G
 ```
 
 ## Pipeline steps
 
-1. **Scraping** — pull raw articles/videos from each source (RSS feeds are easiest to start with)
-2. **Storage** — save raw items to Postgres, deduped by ID/URL so re-runs don't create duplicates
-3. **Summarization** — an AI agent reads each article and writes a short summary + link
-4. **Retrieval** — a query that pulls everything summarized in the last 24 hours
-5. **Delivery** — format it and email it out
+Each article moves through a status state machine stored right on its row
+(`app/database/models.py:ArticleRow.status`):
 
-## Target file structure
+1. **Scrape** — `RSSScraper` pulls all 9 feeds, dedupes in-memory by URL, keeps only
+   items published in the last N hours.
+2. **Save** (`fetched`) — upserted into Postgres; `ON CONFLICT (url) DO NOTHING` makes
+   re-runs safe and idempotent.
+3. **Extract** (`content_fetched`) — `trafilatura` fetches the full article body, since
+   RSS descriptions are usually just a teaser.
+4. **Analyze** (`analyzed`) — the full text goes to `gpt-4o` with a structured prompt
+   that returns `story_type`, `specific_detail`, `angle`, `key_insight`, and `summary` as
+   JSON.
+5. **Email** (`emailed`) — analyzed articles from the last 24h are grouped by
+   `story_type` (Releases, Deep dives, Explainers, Roundups, Commentary, Quick reads)
+   and sent as an HTML + plain-text email via Gmail SMTP.
 
-This is the structure to build *toward*, not all at once — start with one scraper
-printing to console before adding the rest.
+## Stack
+
+| Concern | Choice |
+|---|---|
+| Language / tooling | Python 3.12, [uv](https://github.com/astral-sh/uv) |
+| Scraping | `feedparser` (RSS) + `trafilatura` (full-text extraction) |
+| Data validation | `pydantic` |
+| Database | Postgres — local via `docker-compose` for dev, [Supabase](https://supabase.com) in production |
+| ORM / migrations | SQLAlchemy 2.0 + Alembic |
+| Analysis | OpenAI API (`gpt-4o`) |
+| Delivery | `smtplib` → Gmail SMTP (HTML + plain-text multipart) |
+| Scheduling | GitHub Actions cron (`.github/workflows/daily.yml`, daily at 06:00 UTC) |
+
+## Project structure
 
 ```
-AI News Aggregator/
-├── pyproject.toml
-├── .env                          # API keys, DB creds, email creds — never committed
-├── .gitignore
-├── main.py                       # entrypoint: runs the whole pipeline
-└── app/
-    ├── services/
-    │   ├── openai.py              # fetch OpenAI blog RSS
-    │   ├── anthropic.py           # fetch Anthropic blog RSS
-    │   └── youtube.py             # fetch new videos from a channel
-    ├── database/
-    │   ├── models.py              # table definitions (articles, digests)
-    │   ├── connection.py          # DB engine/session
-    │   └── repository.py          # save/query functions
-    ├── agent/
-    │   └── digest_agent.py        # calls the LLM to summarize one article
-    └── email/
-        └── sender.py              # builds + sends the digest email
+newscaster-ai/
+├── .github/workflows/daily.yml   # cron trigger, runs the pipeline in CI
+├── alembic/                      # migrations
+├── docker-compose.yml            # local Postgres for dev
+├── app/
+│   ├── main.py                   # entrypoint: runs the whole pipeline
+│   ├── scrapers/
+│   │   ├── blogs.py              # RSSScraper + the 9 feed sources
+│   │   └── extractor.py          # full-text extraction via trafilatura
+│   ├── database/
+│   │   ├── models.py             # ArticleRow (single table, status state machine)
+│   │   ├── database.py           # engine/session, reads DATABASE_URL
+│   │   ├── repository.py         # save/query/update functions
+│   │   └── create_tables.py      # one-off table bootstrap (superseded by Alembic)
+│   └── services/
+│       ├── analyzer.py           # OpenAI call + editorial prompt
+│       └── emailer.py            # HTML/text email building + sending
 ```
 
-## Build order (milestones)
+## Running locally
 
-1. One source, print to console (no DB, no AI, no email) — prove scraping works
-2. Add Postgres storage for that one source — prove persistence + dedup works
-3. Add the AI summarization step for saved articles — prove the LLM call works
-4. Add email delivery for one summarized article — full loop works end to end
-5. Generalize: add remaining sources, then the 24-hour digest query
+```bash
+uv sync
+docker compose up -d          # local Postgres on :5434
+uv run alembic upgrade head    # create/update schema
+uv run python -m app.main      # run the pipeline once
+```
+
+Required environment variables (`.env`, not committed):
+
+```
+DATABASE_URL=
+OPENAI_API_KEY=
+EMAIL_ADDRESS=
+EMAIL_APP_PASSWORD=
+EMAIL_TO=
+```
+
+## Deployment
+
+GitHub Actions (`.github/workflows/daily.yml`) runs `uv run python -m app.main` daily
+at 06:00 UTC (and on-demand via `workflow_dispatch`), against a Supabase Postgres
+instance. Secrets (`DATABASE_URL`, `OPENAI_API_KEY`, `EMAIL_ADDRESS`,
+`EMAIL_APP_PASSWORD`, `EMAIL_TO`) are stored as GitHub Actions repo secrets — no
+separate hosting account needed beyond Supabase.
