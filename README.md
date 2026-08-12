@@ -8,7 +8,9 @@ So I built something to read it for me.
 
 Newscaster runs every morning. It scrapes trusted AI and ML blogs, pulls the full text of each article, 
 and has an LLM go through them the way an editor would. Then it emails me a digest grouped by article type 
-and interesting points in each article.
+and interesting points in each article every morning.
+
+This is an end-to-end project which is deployed and runs on its own.
 
 ## Architecture
 
