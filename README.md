@@ -1,12 +1,14 @@
 # Newscaster
 
-A daily pipeline that scrapes AI/ML blogs, has an LLM read each article like an editor,
-and emails a digest grouped by story type — with a suggested "angle" for each piece worth
-building or writing about.
+Keeping up with AI and data is overwhelming when you work in the space. 
+Too many blogs, too many releases, and most of it doesn't matter to me. 
+I was either skimming everything and retaining nothing, or ignoring it all and finding out late.
 
-Unlike a plain link digest, the analysis step doesn't just summarize — it asks "is there
-something a person could build or test from this in a day?" and only surfaces an angle
-when the answer is yes.
+So I built something to read it for me.
+
+Newscaster runs every morning. It scrapes trusted AI and ML blogs, pulls the full text of each article, 
+and has an LLM go through them the way an editor would. Then it emails me a digest grouped by article type 
+and interesting points in each article.
 
 ## Architecture
 
@@ -37,12 +39,9 @@ flowchart TD
 Each article moves through a status state machine stored right on its row
 (`app/database/models.py:ArticleRow.status`):
 
-1. **Scrape** — `RSSScraper` pulls all 9 feeds, dedupes in-memory by URL, keeps only
-   items published in the last N hours.
-2. **Save** (`fetched`) — upserted into Postgres; `ON CONFLICT (url) DO NOTHING` makes
-   re-runs safe and idempotent.
-3. **Extract** (`content_fetched`) — `trafilatura` fetches the full article body, since
-   RSS descriptions are usually just a teaser.
+1. **Scrape** — `RSSScraper` goes through given blog feeds, pulls their title, url, and published date.
+2. **Save** (`fetched`) — articles metadata (title, url, published date) are saved in a postgres database.
+3. **Extract** (`content_fetched`) — `trafilatura` is used to fetch the full article body.
 4. **Analyze** (`analyzed`) — the full text goes to `gpt-4o` with a structured prompt
    that returns `story_type`, `specific_detail`, `angle`, `key_insight`, and `summary` as
    JSON.
@@ -109,5 +108,4 @@ EMAIL_TO=
 GitHub Actions (`.github/workflows/daily.yml`) runs `uv run python -m app.main` daily
 at 06:00 UTC (and on-demand via `workflow_dispatch`), against a Supabase Postgres
 instance. Secrets (`DATABASE_URL`, `OPENAI_API_KEY`, `EMAIL_ADDRESS`,
-`EMAIL_APP_PASSWORD`, `EMAIL_TO`) are stored as GitHub Actions repo secrets — no
-separate hosting account needed beyond Supabase.
+`EMAIL_APP_PASSWORD`, `EMAIL_TO`) are stored as GitHub Actions repo secrets.
