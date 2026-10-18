@@ -110,6 +110,11 @@ EMAIL_APP_PASSWORD=
 EMAIL_TO=
 ```
 
+## Known limitations
+
+- OpenAI's article pages block `trafilatura` (HTTP 403), so those articles stay at `fetched` and are retried on each run.
+- It has one user (me). Sources and the email recipient are set in code and environment variables, not per user.
+
 ## Deployment
 
 GitHub Actions (`.github/workflows/daily.yml`) runs `uv run python -m app.main` daily
